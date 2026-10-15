@@ -497,7 +497,7 @@ export default {
         }
       });
     } catch (err) {
-      console.error("[opencode-setups] server hook registration failed:", err);
+      console.error("[t3code-style-opencode-sidebar] server hook registration failed:", err);
     }
   },
 };
