@@ -22,6 +22,10 @@ Press `s` on a chat (or click `snooze`) and pick when it should come back:
 
 When the time comes, the chat moves back to **Running**. Waking a chat by hand clears its timer.
 
+## Upgrading from `opencode.setups`
+
+The plugin id is now `t3code-style-opencode-sidebar`, so its state file moved too. Copy `plugin.opencode.setups.metadata.json` to `plugin.t3code-style-opencode-sidebar.metadata.json` in your OpenCode state folder (`~/.local/state/opencode/latest/tui/`). Your saved snoozes, pins, and sections come with it. The old file is left in place as a backup.
+
 ## Keys
 
 | Key | Action |

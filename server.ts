@@ -424,7 +424,7 @@ const filterTools = (event: any, allowed: string[] | undefined) => {
 };
 
 export default {
-  id: "opencode.setups",
+  id: "t3code-style-opencode-sidebar",
   setup: async (ctx: any) => {
     try {
       if (!ctx?.session?.hook) return;

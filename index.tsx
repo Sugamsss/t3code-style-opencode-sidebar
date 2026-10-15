@@ -260,7 +260,7 @@ export const colors = (theme: any) => ({
 });
 
 export default {
-  id: "opencode.setups",
+  id: "t3code-style-opencode-sidebar",
   setup(ctx: any) {
     const [store, update] = ctx.storage.store("metadata", {
       initial: {
