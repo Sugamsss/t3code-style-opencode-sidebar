@@ -1,0 +1,13 @@
+{
+  "name": "opencode-setups",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "bun --conditions=browser test ./test"
+  },
+  "main": "./tui.tsx",
+  "exports": {
+    "./tui": "./tui.tsx",
+    "./server": "./server.ts"
+  }
+}
