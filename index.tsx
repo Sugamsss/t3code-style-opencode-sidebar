@@ -102,6 +102,7 @@ const builtin: Setup[] = [
 
 const projectGroupSpecs = [
   { id: "production", name: "PRODUCTION", icon: "◈", root: join(homedir(), "0. Production Projects") },
+  { id: "opencode", name: "OPENCODE", icon: "⬡", root: join(homedir(), "OpenCode plugins") },
   { id: "personal", name: "PERSONAL", icon: "◇", root: join(homedir(), "1. Personal Projects") },
   { id: "automation", name: "AUTOMATIONEDGE", icon: "◆", root: join(homedir(), "2. AutomationEdge Projects") },
   { id: "portfolio", name: "PORTFOLIO", icon: "✦", root: join(homedir(), "3. Portfolio & Project Proofs") },
