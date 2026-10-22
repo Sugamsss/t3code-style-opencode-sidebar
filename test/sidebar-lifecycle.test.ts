@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { LEGACY_ARCHIVED } from "../legacy-archive";
 import { isAutoArchiveEligible, normalizeLifecycle, readLifecycle, sectionOpen, shouldReviveArchived, shouldWakeSnoozed, updateThreadLifecycle } from "../sidebar-lifecycle";
-
-// The lifecycle value earlier versions wrote to the state file. Named once,
-// here only, so the migration stays testable without the old name coming back.
-const LEGACY_ARCHIVED = "settled";
 
 describe("sidebar lifecycle", () => {
   test("automatic archiving applies only to running or unclassified chats", () => {

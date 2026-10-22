@@ -6,6 +6,7 @@ import { createEffect, createMemo, createSignal, For, Show, untrack } from "soli
 import { createSidebarStatus, statusColors } from "./sidebar-status";
 import { scannerCells, scannerFrameAt, scannerFrameCount, scannerShouldAnimate, scannerWidth } from "./scanner-frames";
 import { isAutoArchiveEligible, readLifecycle, sectionOpen, shouldReviveArchived, shouldWakeSnoozed, updateThreadLifecycle } from "./sidebar-lifecycle";
+import { hasLegacyArchiveState, migrateLegacyArchiveState } from "./legacy-archive";
 import { applyRefreshEvent, commitRefresh, createRefreshState, refreshSnapshot } from "./sidebar-refresh";
 import { updateSessionList } from "./sidebar-session-list";
 import { excludeWokenSessions, expiredSnoozes, snoozeUntil, type SnoozeOption } from "./sidebar-snooze";
@@ -278,6 +279,10 @@ export default {
         viewed: {},
       },
     });
+
+    // Guard the update so clean state files are not written on every launch.
+    // Rewrite pre-rename archive data once, so the state file stops carrying it.
+    if (hasLegacyArchiveState(store)) update((draft: any) => { migrateLegacyArchiveState(draft); });
 
     const [setupsList, setSetupsList] = createSignal<Setup[]>(readSetups(ctx.location?.directory));
     const reloadSetups = () => {

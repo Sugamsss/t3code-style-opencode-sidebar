@@ -1,3 +1,5 @@
+import { LEGACY_ARCHIVED } from "./legacy-archive";
+
 export type SidebarLifecycle = "running" | "pinned" | "snoozed" | "archived";
 
 const lifecycleValues = new Set<SidebarLifecycle>(["running", "pinned", "snoozed", "archived"]);
@@ -6,7 +8,7 @@ const lifecycleValues = new Set<SidebarLifecycle>(["running", "pinned", "snoozed
 export const normalizeLifecycle = (value: unknown): SidebarLifecycle =>
   value === "active" ? "running"
     // "settled" is the pre-rename state-file value; read it as archived.
-    : value === "settled" ? "archived"
+    : value === LEGACY_ARCHIVED ? "archived"
     : typeof value === "string" && lifecycleValues.has(value as SidebarLifecycle)
       ? value as SidebarLifecycle
       : "running";
