@@ -164,7 +164,7 @@ export function createSidebarStatus(
     hydrated.clear();
     generation += 1;
     // A reconnect invalidates the old response, but does not start a second
-    // request while that response is still in flight. Its settlement starts
+    // request while that response is still in flight. Its retry starts
     // one, and only one, request for the newest generation.
     for (const state of hydrating.values()) {
       if (state.pending) state.queuedGeneration = generation;

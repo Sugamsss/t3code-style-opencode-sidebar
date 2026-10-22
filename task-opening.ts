@@ -1,4 +1,4 @@
-export type TaskLifecycle = "running" | "pinned" | "snoozed" | "settled";
+export type TaskLifecycle = "running" | "pinned" | "snoozed" | "archived";
 
 export type TaskOpenRequest = {
   target: { id: string };

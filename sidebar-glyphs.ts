@@ -4,8 +4,8 @@ export const GLYPHS = {
   close: "×",
   delete: "×",
 
-  settle: "✓",
-  unsettle: "○",
+  archive: "✓",
+  restore: "○",
 
   pin: "●",
   unpin: "○",
@@ -33,10 +33,10 @@ export const GLYPHS = {
   shortcut: {
     pin: "p",
     snooze: "s",
-    settle: "t",
+    archive: "t",
     delete: "x",
     unpin: "u",
     wake: "w",
-    unsettle: "u",
+    restore: "u",
   },
 } as const;

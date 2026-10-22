@@ -24,6 +24,6 @@ export const expiredSnoozes = (threads: Record<string, any> | undefined, now: nu
     .filter(([, thread]) => thread?.lifecycle === "snoozed" && typeof thread.snoozeUntil === "number" && thread.snoozeUntil <= now)
     .map(([id]) => id);
 
-/** Exclude snooze wakes from the automatic stale-thread settlement sweep. */
+/** Exclude snooze wakes from the automatic stale-thread archive sweep. */
 export const excludeWokenSessions = <T extends { id: string }>(sessions: T[], woken: ReadonlySet<string>): T[] =>
   sessions.filter((session) => !woken.has(session.id));

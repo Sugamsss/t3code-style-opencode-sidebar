@@ -3,7 +3,7 @@ import { openTask } from "../task-opening";
 
 const actions = (events: string[], visible = true, persist: (id: string, state: string) => void = () => {}) => ({
   rememberScroll: (): void => { events.push("scroll"); },
-  persistLifecycle: (id: string, state: "running" | "pinned" | "snoozed" | "settled") => { events.push(`lifecycle:${id}:${state}`); persist(id, state); },
+  persistLifecycle: (id: string, state: "running" | "pinned" | "snoozed" | "archived") => { events.push(`lifecycle:${id}:${state}`); persist(id, state); },
   markRead: (id: string) => events.push(`read:${id}`),
   isVisibleInFilter: () => visible,
   showPersistenceError: () => events.push("error"),

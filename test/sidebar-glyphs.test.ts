@@ -5,7 +5,7 @@ describe("sidebar glyph system", () => {
   test("defines single-weight clean symbols", () => {
     expect(GLYPHS.add).toBe("+");
     expect(GLYPHS.delete).toBe("×");
-    expect(GLYPHS.settle).toBe("✓");
+    expect(GLYPHS.archive).toBe("✓");
     expect(GLYPHS.disclosure.open).toBe("▾");
     expect(GLYPHS.disclosure.closed).toBe("▸");
     expect(GLYPHS.disclosure.select).toBe("⌄");

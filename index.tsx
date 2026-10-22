@@ -5,7 +5,7 @@ import { basename, join } from "node:path";
 import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 import { createSidebarStatus, statusColors } from "./sidebar-status";
 import { scannerCells, scannerFrameAt, scannerFrameCount, scannerShouldAnimate, scannerWidth } from "./scanner-frames";
-import { isAutomaticSettleEligible, readLifecycle, sectionOpen, shouldReviveSettled, shouldWakeSnoozed, updateThreadLifecycle } from "./sidebar-lifecycle";
+import { isAutoArchiveEligible, readLifecycle, sectionOpen, shouldReviveArchived, shouldWakeSnoozed, updateThreadLifecycle } from "./sidebar-lifecycle";
 import { applyRefreshEvent, commitRefresh, createRefreshState, refreshSnapshot } from "./sidebar-refresh";
 import { updateSessionList } from "./sidebar-session-list";
 import { excludeWokenSessions, expiredSnoozes, snoozeUntil, type SnoozeOption } from "./sidebar-snooze";
@@ -30,7 +30,7 @@ type Setup = {
   dirPath?: string;
 };
 
-type Lifecycle = "running" | "pinned" | "snoozed" | "settled";
+type Lifecycle = "running" | "pinned" | "snoozed" | "archived";
 
 /**
  * The small, intentionally boring glyph vocabulary used by the sidebar.
@@ -272,7 +272,7 @@ export default {
         needsYouOpen: true,
         runningOpen: false,
         snoozedOpen: true,
-        settledOpen: false,
+        archivedOpen: false,
         projectFilter: "all",
         sidebarScrollTop: 0,
         viewed: {},
@@ -557,10 +557,10 @@ export default {
       return readLifecycle(store.threads, session.id);
     };
     const grouped = createMemo(() => {
-      const result = { pinned: [] as any[], needsYou: [] as any[], running: [] as any[], snoozed: [] as any[], settled: [] as any[] };
+      const result = { pinned: [] as any[], needsYou: [] as any[], running: [] as any[], snoozed: [] as any[], archived: [] as any[] };
       for (const session of visibleSessions()) {
         const state = stateFor(session);
-        if (state === "pinned" || state === "snoozed" || state === "settled") result[state].push(session);
+        if (state === "pinned" || state === "snoozed" || state === "archived") result[state].push(session);
         else result[sidebarStatus.status(session) === "active" ? "running" : "needsYou"].push(session);
       }
       return result;
@@ -568,7 +568,7 @@ export default {
     animationMounted = createMemo(() => scannerShouldAnimate(isLeftOpen(), (sectionOpen("running", store.runningOpen) && grouped().running.some((session) => sidebarStatus.status(session) === "active"))
        || (sectionOpen("pinned", store.pinnedOpen) && grouped().pinned.some((session) => sidebarStatus.status(session) === "active"))
        || (sectionOpen("snoozed", store.snoozedOpen) && grouped().snoozed.some((session) => sidebarStatus.status(session) === "active"))
-       || (sectionOpen("settled", store.settledOpen) && grouped().settled.some((session) => sidebarStatus.status(session) === "active"))));
+       || (sectionOpen("archived", store.archivedOpen) && grouped().archived.some((session) => sidebarStatus.status(session) === "active"))));
     const relativeTime = (timestamp: number | undefined) => {
       if (!timestamp) return "";
       const minutes = Math.max(0, Math.floor((Date.now() - timestamp) / 60000));
@@ -1628,14 +1628,14 @@ export default {
       syncHostLayout(next);
     };
 
-    const toggle = (key: "pinnedOpen" | "needsYouOpen" | "runningOpen" | "snoozedOpen" | "settledOpen") => {
+    const toggle = (key: "pinnedOpen" | "needsYouOpen" | "runningOpen" | "snoozedOpen" | "archivedOpen") => {
       update((draft: any) => {
         draft[key] = (key === "pinnedOpen" || key === "needsYouOpen" || key === "runningOpen") ? draft[key] === false : !draft[key];
       });
     };
 
     const lifecycle = (id: string, state: Lifecycle) => {
-      if (state === "settled" && sidebarStatus.isRunning({ id } as any)) {
+      if (state === "archived" && sidebarStatus.isRunning({ id } as any)) {
         ctx.ui.toast.show({ title: "Still running", message: "Archive it once it finishes.", variant: "info", duration: 2200 });
         return;
       }
@@ -1649,7 +1649,7 @@ export default {
     createEffect(() => {
       const sessions = uniqueSessions([...allSessions(), ...(ctx.data.session.list() || [])]);
       const revive = sessions.filter((session) => !session.parentID
-        && shouldReviveSettled(readLifecycle(store.threads, session.id), isRunning(session)))
+        && shouldReviveArchived(readLifecycle(store.threads, session.id), isRunning(session)))
         .map((session) => session.id);
       const wake = sessions.filter((session) => !session.parentID
         && shouldWakeSnoozed(readLifecycle(store.threads, session.id), isRunning(session)))
@@ -1657,10 +1657,10 @@ export default {
       if (!revive.length && !wake.length) return;
       untrack(() => update((draft: any) => {
         for (const id of revive) {
-          if (!shouldReviveSettled(readLifecycle(draft.threads, id), true)) continue;
+          if (!shouldReviveArchived(readLifecycle(draft.threads, id), true)) continue;
           const item = updateThreadLifecycle(draft.threads, id, "running", draft.activeSetup);
           delete item.snoozeUntil;
-          delete item.settledAt;
+          delete item.archivedAt;
         }
         for (const id of wake) {
           if (!shouldWakeSnoozed(readLifecycle(draft.threads, id), true)) continue;
@@ -1733,29 +1733,29 @@ export default {
       });
     };
 
-    const autoSettleStaleRunning = (sessions: any[]) => {
+    const autoArchiveStaleRunning = (sessions: any[]) => {
       const cutoff = Date.now() - 3 * 24 * 60 * 60 * 1000;
       const stale = excludeWokenSessions(sessions, wokenSessionIds).filter((session) => {
         if (session.parentID) return false;
         const saved = readLifecycle(store.threads, session.id);
         const lastActivity = session.time?.updated || session.time?.created || 0;
-        return isAutomaticSettleEligible(saved) && !isRunning(session) && lastActivity > 0 && lastActivity <= cutoff;
+        return isAutoArchiveEligible(saved) && !isRunning(session) && lastActivity > 0 && lastActivity <= cutoff;
       });
       if (stale.length === 0) return;
 
-      const settledAt = new Date().toISOString();
+      const archivedAt = new Date().toISOString();
       update((draft: any) => {
         for (const session of stale) {
-          // Re-check inside the write so an explicit pin/snooze/settle action
+          // Re-check inside the write so an explicit pin/snooze/archive action
           // that happened during the startup fetch always wins.
-          if (wokenSessionIds.has(session.id) || isRunning(session) || !isAutomaticSettleEligible(readLifecycle(draft.threads, session.id))) continue;
-          const updated = updateThreadLifecycle(draft.threads, session.id, "settled", draft.activeSetup);
-          updated.settledAt = settledAt;
+          if (wokenSessionIds.has(session.id) || isRunning(session) || !isAutoArchiveEligible(readLifecycle(draft.threads, session.id))) continue;
+          const updated = updateThreadLifecycle(draft.threads, session.id, "archived", draft.activeSetup);
+          updated.archivedAt = archivedAt;
         }
       });
     };
     void syncSessions().then((sessions) => {
-      if (!disposed) autoSettleStaleRunning(sessions);
+      if (!disposed) autoArchiveStaleRunning(sessions);
     }).catch(() => undefined);
 
     const deleteSession = async (session: any) => {
@@ -1887,7 +1887,7 @@ export default {
               </box>
             );
           };
-         const compactAction: Record<string, string> = { pinned: "unpin", snoozed: "wake", settled: "restore" };
+         const compactAction: Record<string, string> = { pinned: "unpin", snoozed: "wake", archived: "restore" };
           const ExpandedActiveRow = (session: any) => {
             const project = projectForSession(session);
              const titleColor = () => selectedRow(session) ? c.selected : c.text;
@@ -1903,7 +1903,7 @@ export default {
                <text fg={c.muted}>·</text>
                 {action(session, "snooze", () => chooseSnooze(session))}
                <text fg={c.muted}>·</text>
-               {action(session, "archive", () => lifecycle(session.id, "settled"))}
+               {action(session, "archive", () => lifecycle(session.id, "archived"))}
                <text fg={c.muted}>·</text>
                {action(session, "delete", () => { void deleteSession(session); })}
              </box>
@@ -1911,7 +1911,7 @@ export default {
          };
           const CompactTaskRow = (session: any, state: string) => {
             const project = projectForSession(session);
-            const marker = state === "pinned" ? "● " : state === "settled" ? "✓ " : "";
+            const marker = state === "pinned" ? "● " : state === "archived" ? "✓ " : "";
             const transition = compactAction[state];
              const titleColor = () => selectedRow(session) ? c.selected : c.text;
               return rowShell(session, <box flexDirection="column">
@@ -2008,14 +2008,14 @@ export default {
                     </Show>
                   </box>
                 </Show>
-                <box width="100%" minWidth={0} flexDirection="row" justifyContent="space-between" marginTop={1} paddingTop={1} paddingBottom={1} border={["top"]} borderColor={c.border} onMouseUp={() => toggle("settledOpen")}>
+                <box width="100%" minWidth={0} flexDirection="row" justifyContent="space-between" marginTop={1} paddingTop={1} paddingBottom={1} border={["top"]} borderColor={c.border} onMouseUp={() => toggle("archivedOpen")}>
                   <box flexDirection="row" gap={1}>
-                    <text fg={c.muted}><b>{sectionOpen("settled", store.settledOpen) ? "▾" : "▸"} Archive</b></text>
-                    <text fg={c.muted}>({grouped().settled.length})</text>
+                    <text fg={c.muted}><b>{sectionOpen("archived", store.archivedOpen) ? "▾" : "▸"} Archive</b></text>
+                    <text fg={c.muted}>({grouped().archived.length})</text>
                   </box>
                 </box>
-                <Show when={sectionOpen("settled", store.settledOpen)}>
-                  <For each={grouped().settled}>{(session, index) => <>{row(session, "settled")}{index() < grouped().settled.length - 1 ? <box width="100%" height={1} border={["bottom"]} borderColor={c.border} /> : null}</>}</For>
+                <Show when={sectionOpen("archived", store.archivedOpen)}>
+                  <For each={grouped().archived}>{(session, index) => <>{row(session, "archived")}{index() < grouped().archived.length - 1 ? <box width="100%" height={1} border={["bottom"]} borderColor={c.border} /> : null}</>}</For>
                 </Show>
                 <box width="100%" height={1} flexShrink={0} />
               </scrollbox>

@@ -1,10 +1,12 @@
-export type SidebarLifecycle = "running" | "pinned" | "snoozed" | "settled";
+export type SidebarLifecycle = "running" | "pinned" | "snoozed" | "archived";
 
-const lifecycleValues = new Set<SidebarLifecycle>(["running", "pinned", "snoozed", "settled"]);
+const lifecycleValues = new Set<SidebarLifecycle>(["running", "pinned", "snoozed", "archived"]);
 
 /** Read the finite, user-owned lifecycle state without guessing from runtime metadata. */
 export const normalizeLifecycle = (value: unknown): SidebarLifecycle =>
   value === "active" ? "running"
+    // "settled" is the pre-rename state-file value; read it as archived.
+    : value === "settled" ? "archived"
     : typeof value === "string" && lifecycleValues.has(value as SidebarLifecycle)
       ? value as SidebarLifecycle
       : "running";
@@ -13,8 +15,8 @@ export const readLifecycle = (threads: Record<string, any> | undefined, sessionI
   normalizeLifecycle(threads?.[sessionID]?.lifecycle);
 
 /** The archive may hold finished work, never live work. */
-export const shouldReviveSettled = (lifecycle: SidebarLifecycle, executing: boolean) =>
-  lifecycle === "settled" && executing;
+export const shouldReviveArchived = (lifecycle: SidebarLifecycle, executing: boolean) =>
+  lifecycle === "archived" && executing;
 
 export const shouldWakeSnoozed = (lifecycle: SidebarLifecycle, executing: boolean): boolean =>
   lifecycle === "snoozed" && executing;
@@ -29,19 +31,19 @@ export const updateThreadLifecycle = (
   return item;
 };
 
-export type SidebarSection = "left" | "pinned" | "needsYou" | "running" | "snoozed" | "settled";
+export type SidebarSection = "left" | "pinned" | "needsYou" | "running" | "snoozed" | "archived";
 const sectionDefaults: Record<SidebarSection, boolean> = {
   left: true,
   pinned: true,
   needsYou: true,
   running: false,
   snoozed: true,
-  settled: false,
+  archived: false,
 };
 
 export const sectionOpen = (section: SidebarSection, value: unknown): boolean =>
   value === undefined ? sectionDefaults[section] : value === true;
 
-/** Automatic settling applies to unclassified or explicitly running chats. */
-export const isAutomaticSettleEligible = (lifecycle: SidebarLifecycle | undefined) =>
+/** Automatic archiving applies to unclassified or explicitly running chats. */
+export const isAutoArchiveEligible = (lifecycle: SidebarLifecycle | undefined) =>
   lifecycle === undefined || lifecycle === "running";
