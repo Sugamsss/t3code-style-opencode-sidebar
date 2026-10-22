@@ -1,13 +1,14 @@
 // Use .tsx so OpenCode binds Solid imports to its embedded reactive runtime.
 import { createEffect, createMemo, createSignal, untrack } from "solid-js";
 
-export type SidebarStatus = "attention" | "active" | "failed" | "unread" | "read";
+export type SidebarStatus = "attention" | "active" | "failed" | "unread" | "read" | "woken";
 export const statusColors: Record<SidebarStatus, string> = {
   attention: "#facc15",
   active: "#22c55e",
   failed: "#ef4444",
   unread: "#22c55e",
   read: "#9ca3af",
+  woken: "#a78bfa",
 };
 
 type Session = {

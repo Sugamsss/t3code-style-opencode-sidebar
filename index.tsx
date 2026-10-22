@@ -2,10 +2,10 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
-import { createMemo, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js";
 import { createSidebarStatus, statusColors } from "./sidebar-status";
 import { scannerCells, scannerFrameAt, scannerFrameCount, scannerShouldAnimate, scannerWidth } from "./scanner-frames";
-import { isAutomaticSettleEligible, readLifecycle, sectionOpen, updateThreadLifecycle } from "./sidebar-lifecycle";
+import { isAutomaticSettleEligible, readLifecycle, sectionOpen, shouldReviveSettled, shouldWakeSnoozed, updateThreadLifecycle } from "./sidebar-lifecycle";
 import { applyRefreshEvent, commitRefresh, createRefreshState, refreshSnapshot } from "./sidebar-refresh";
 import { updateSessionList } from "./sidebar-session-list";
 import { excludeWokenSessions, expiredSnoozes, snoozeUntil, type SnoozeOption } from "./sidebar-snooze";
@@ -42,8 +42,8 @@ export const glyphs = {
   search: "⌕",
   close: "×",
   delete: "×",
-  settle: "✓",
-  unsettle: "○",
+  archive: "✓",
+  restore: "○",
   pin: "●",
   unpin: "○",
   snooze: "◌",
@@ -59,7 +59,7 @@ export const glyphs = {
     group: "◆",
   },
   pointer: "❯",
-  shortcut: { pin: "p", snooze: "s", settle: "t", delete: "x", unpin: "u", wake: "w", unsettle: "u" },
+  shortcut: { pin: "p", snooze: "s", archive: "t", delete: "x", unpin: "u", wake: "w", restore: "u" },
 } as const;
 
 const builtin: Setup[] = [
@@ -269,7 +269,8 @@ export default {
         activeSetup: "software-factory",
         leftOpen: true,
         pinnedOpen: true,
-        runningOpen: true,
+        needsYouOpen: true,
+        runningOpen: false,
         snoozedOpen: true,
         settledOpen: false,
         projectFilter: "all",
@@ -556,10 +557,11 @@ export default {
       return readLifecycle(store.threads, session.id);
     };
     const grouped = createMemo(() => {
-      const result = { pinned: [] as any[], running: [] as any[], snoozed: [] as any[], settled: [] as any[] };
+      const result = { pinned: [] as any[], needsYou: [] as any[], running: [] as any[], snoozed: [] as any[], settled: [] as any[] };
       for (const session of visibleSessions()) {
         const state = stateFor(session);
-        result[state === "pinned" ? "pinned" : state === "snoozed" ? "snoozed" : state === "settled" ? "settled" : "running"].push(session);
+        if (state === "pinned" || state === "snoozed" || state === "settled") result[state].push(session);
+        else result[sidebarStatus.status(session) === "active" ? "running" : "needsYou"].push(session);
       }
       return result;
     });
@@ -1626,19 +1628,57 @@ export default {
       syncHostLayout(next);
     };
 
-    const toggle = (key: "pinnedOpen" | "runningOpen" | "snoozedOpen" | "settledOpen") => {
+    const toggle = (key: "pinnedOpen" | "needsYouOpen" | "runningOpen" | "snoozedOpen" | "settledOpen") => {
       update((draft: any) => {
-        draft[key] = (key === "pinnedOpen" || key === "runningOpen") ? draft[key] === false : !draft[key];
+        draft[key] = (key === "pinnedOpen" || key === "needsYouOpen" || key === "runningOpen") ? draft[key] === false : !draft[key];
       });
     };
 
     const lifecycle = (id: string, state: Lifecycle) => {
+      if (state === "settled" && sidebarStatus.isRunning({ id } as any)) {
+        ctx.ui.toast.show({ title: "Still running", message: "Archive it once it finishes.", variant: "info", duration: 2200 });
+        return;
+      }
       update((draft: any) => {
         const item = updateThreadLifecycle(draft.threads, id, state, draft.activeSetup);
         if (state !== "snoozed") delete item.snoozeUntil;
       });
     };
     const wokenSessionIds = new Set<string>();
+    const [wokenVersion, setWokenVersion] = createSignal(0);
+    createEffect(() => {
+      const sessions = uniqueSessions([...allSessions(), ...(ctx.data.session.list() || [])]);
+      const revive = sessions.filter((session) => !session.parentID
+        && shouldReviveSettled(readLifecycle(store.threads, session.id), isRunning(session)))
+        .map((session) => session.id);
+      const wake = sessions.filter((session) => !session.parentID
+        && shouldWakeSnoozed(readLifecycle(store.threads, session.id), isRunning(session)))
+        .map((session) => session.id);
+      if (!revive.length && !wake.length) return;
+      untrack(() => update((draft: any) => {
+        for (const id of revive) {
+          if (!shouldReviveSettled(readLifecycle(draft.threads, id), true)) continue;
+          const item = updateThreadLifecycle(draft.threads, id, "running", draft.activeSetup);
+          delete item.snoozeUntil;
+          delete item.settledAt;
+        }
+        for (const id of wake) {
+          if (!shouldWakeSnoozed(readLifecycle(draft.threads, id), true)) continue;
+          const item = updateThreadLifecycle(draft.threads, id, "running", draft.activeSetup);
+          delete item.snoozeUntil;
+        }
+      }));
+    });
+    createEffect(() => {
+      const all = uniqueSessions([...allSessions(), ...(ctx.data.session.list() || [])]);
+      for (const session of all) {
+        const lifecycle = readLifecycle(store.threads, session.id);
+        if (wokenSessionIds.has(session.id) && (isRunning(session) || lifecycle !== "running")) {
+          wokenSessionIds.delete(session.id);
+          setWokenVersion((version) => version + 1);
+        }
+      }
+    });
     const wakeExpiredSnoozes = () => {
       const expired = expiredSnoozes(store.threads, Date.now());
       if (!expired.length) return;
@@ -1649,6 +1689,7 @@ export default {
             updateThreadLifecycle(draft.threads, id, "running", draft.activeSetup);
             delete item.snoozeUntil;
             wokenSessionIds.add(id);
+            setWokenVersion((version) => version + 1);
           }
         }
       });
@@ -1707,7 +1748,7 @@ export default {
         for (const session of stale) {
           // Re-check inside the write so an explicit pin/snooze/settle action
           // that happened during the startup fetch always wins.
-          if (wokenSessionIds.has(session.id) || !isAutomaticSettleEligible(readLifecycle(draft.threads, session.id))) continue;
+          if (wokenSessionIds.has(session.id) || isRunning(session) || !isAutomaticSettleEligible(readLifecycle(draft.threads, session.id))) continue;
           const updated = updateThreadLifecycle(draft.threads, session.id, "settled", draft.activeSetup);
           updated.settledAt = settledAt;
         }
@@ -1811,10 +1852,14 @@ export default {
           );
 
          const statusRail = (session: any) => {
-           const status = () => sidebarStatus.status(session);
-           const staticGlyph = () => (
-             <box width={scannerWidth} height={1} flexDirection="row" gap={0} justifyContent="center">
-               <For each={scannerCells}>{() => <text width={1} height={1} wrapMode="none" fg={statusColors[status()]}>⬝</text>}</For>
+            const status = () => sidebarStatus.status(session);
+            const displayStatus = () => {
+              wokenVersion();
+              return wokenSessionIds.has(session.id) && (status() === "unread" || status() === "read") ? "woken" : status();
+            };
+            const staticGlyph = () => (
+              <box width={scannerWidth} height={1} flexDirection="row" gap={0} justifyContent="center">
+                <For each={scannerCells}>{() => <text width={1} height={1} wrapMode="none" fg={statusColors[displayStatus()]}>⬝</text>}</For>
              </box>
            );
            return (
@@ -1834,7 +1879,7 @@ export default {
             const pressed = () => pressedAction() === key;
             const hovered = () => hoveredAction() === key;
             const active = () => pressed() || hovered();
-            const hoverColor = name === "delete" ? c.error : name === "settle" ? c.success : name === "snooze" || name === "wake" ? c.info : c.primary;
+            const hoverColor = name === "delete" ? c.error : name === "archive" ? c.success : name === "snooze" || name === "wake" ? c.info : c.primary;
             const press = (event: any) => { stop(event); rememberSidebarScroll(true); flashAction(key); };
             return (
               <box flexGrow={0} flexShrink={0} height={1} alignItems="center" justifyContent="center" onMouseOver={(event: any) => { stop(event); setHoveredAction(key); }} onMouseOut={(event: any) => { stop(event); if (hoveredAction() === key) setHoveredAction(undefined); }} onMouseDown={press} onMouseUp={(event: any) => { press(event); run(); }}>
@@ -1842,7 +1887,7 @@ export default {
               </box>
             );
           };
-         const compactAction: Record<string, string> = { pinned: "unpin", snoozed: "wake", settled: "unsettle" };
+         const compactAction: Record<string, string> = { pinned: "unpin", snoozed: "wake", settled: "restore" };
           const ExpandedActiveRow = (session: any) => {
             const project = projectForSession(session);
              const titleColor = () => selectedRow(session) ? c.selected : c.text;
@@ -1858,7 +1903,7 @@ export default {
                <text fg={c.muted}>·</text>
                 {action(session, "snooze", () => chooseSnooze(session))}
                <text fg={c.muted}>·</text>
-               {action(session, "settle", () => lifecycle(session.id, "settled"))}
+               {action(session, "archive", () => lifecycle(session.id, "settled"))}
                <text fg={c.muted}>·</text>
                {action(session, "delete", () => { void deleteSession(session); })}
              </box>
@@ -1882,7 +1927,7 @@ export default {
              </box>
            </box>);
          };
-         const row = (session: any, state: string) => state === "running" ? ExpandedActiveRow(session) : CompactTaskRow(session, state);
+         const row = (session: any, state: string) => state === "running" || state === "needsYou" ? ExpandedActiveRow(session) : CompactTaskRow(session, state);
 
         const chatDivider = () => (
           <box width="100%" flexShrink={1} minWidth={0} height={1} marginTop={0} marginBottom={0} border={["bottom"]} borderColor={c.border} />
@@ -1921,13 +1966,23 @@ export default {
                   </box>
                   <Show when={sectionOpen("pinned", store.pinnedOpen)}>
                     <For each={grouped().pinned}>{(session, index) => <>{row(session, "pinned")}{index() < grouped().pinned.length - 1 ? chatDivider() : null}</>}</For>
-                    <Show when={grouped().running.length > 0}>
+                    <Show when={grouped().needsYou.length + grouped().running.length > 0}>
                       <box width="100%" height={1} marginTop={1} marginBottom={1} border={["bottom"]} borderColor={c.border} />
                     </Show>
                   </Show>
                 </Show>
+                <Show when={grouped().needsYou.length > 0}>
+                  <box width="100%" minWidth={0} flexDirection="row" gap={1} paddingTop={1} paddingBottom={1} onMouseUp={() => toggle("needsYouOpen")}>
+                    <text fg={c.muted}><b>{sectionOpen("needsYou", store.needsYouOpen) ? "▾" : "▸"} Needs You</b></text>
+                    <text fg={c.muted}>({grouped().needsYou.length})</text>
+                  </box>
+                  <Show when={sectionOpen("needsYou", store.needsYouOpen)}>
+                    <For each={grouped().needsYou}>{(session, index) => <>{row(session, "needsYou")}{index() < grouped().needsYou.length - 1 ? chatDivider() : null}</>}</For>
+                  </Show>
+                  <Show when={grouped().running.length > 0}><box width="100%" height={1} marginTop={1} marginBottom={1} border={["bottom"]} borderColor={c.border} /></Show>
+                </Show>
                 <Show when={grouped().running.length > 0} fallback={
-                  <Show when={grouped().pinned.length === 0}>
+                  <Show when={grouped().needsYou.length === 0 && grouped().pinned.length === 0}>
                     <box width="100%" minWidth={0} flexDirection="column" alignItems="center" paddingTop={2} paddingBottom={2} gap={0}>
                       <text fg={c.muted}>◌ No running threads</text>
                       <text fg={c.muted}>Press <b>+</b> to start a new chat</text>
@@ -1955,7 +2010,7 @@ export default {
                 </Show>
                 <box width="100%" minWidth={0} flexDirection="row" justifyContent="space-between" marginTop={1} paddingTop={1} paddingBottom={1} border={["top"]} borderColor={c.border} onMouseUp={() => toggle("settledOpen")}>
                   <box flexDirection="row" gap={1}>
-                    <text fg={c.muted}><b>{sectionOpen("settled", store.settledOpen) ? "▾" : "▸"} Settled</b></text>
+                    <text fg={c.muted}><b>{sectionOpen("settled", store.settledOpen) ? "▾" : "▸"} Archive</b></text>
                     <text fg={c.muted}>({grouped().settled.length})</text>
                   </box>
                 </box>

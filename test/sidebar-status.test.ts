@@ -220,5 +220,5 @@ describe("background subagents belong to their parent task", () => {
 });
 
 test("status rail uses the exact specified static colors", () => {
-  expect(statusColors).toEqual({ attention: "#facc15", active: "#22c55e", failed: "#ef4444", unread: "#22c55e", read: "#9ca3af" });
+  expect(statusColors).toEqual({ attention: "#facc15", active: "#22c55e", failed: "#ef4444", unread: "#22c55e", read: "#9ca3af", woken: "#a78bfa" });
 });

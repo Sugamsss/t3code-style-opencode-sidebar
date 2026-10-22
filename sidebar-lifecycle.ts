@@ -12,6 +12,13 @@ export const normalizeLifecycle = (value: unknown): SidebarLifecycle =>
 export const readLifecycle = (threads: Record<string, any> | undefined, sessionID: string): SidebarLifecycle =>
   normalizeLifecycle(threads?.[sessionID]?.lifecycle);
 
+/** The archive may hold finished work, never live work. */
+export const shouldReviveSettled = (lifecycle: SidebarLifecycle, executing: boolean) =>
+  lifecycle === "settled" && executing;
+
+export const shouldWakeSnoozed = (lifecycle: SidebarLifecycle, executing: boolean): boolean =>
+  lifecycle === "snoozed" && executing;
+
 /** Update only lifecycle metadata; existing setup and unrelated fields are retained. */
 export const updateThreadLifecycle = (
   threads: Record<string, any>, sessionID: string, lifecycle: SidebarLifecycle, fallbackSetupId?: string,
@@ -22,11 +29,12 @@ export const updateThreadLifecycle = (
   return item;
 };
 
-export type SidebarSection = "left" | "pinned" | "running" | "snoozed" | "settled";
+export type SidebarSection = "left" | "pinned" | "needsYou" | "running" | "snoozed" | "settled";
 const sectionDefaults: Record<SidebarSection, boolean> = {
   left: true,
   pinned: true,
-  running: true,
+  needsYou: true,
+  running: false,
   snoozed: true,
   settled: false,
 };
